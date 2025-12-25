@@ -1,9 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { MessageSquare, LayoutDashboard, Smartphone, ShoppingBag } from 'lucide-react';
+import { MessageSquare, Smartphone, ShoppingBag } from 'lucide-react';
 import ChatPage from './pages/Chat.tsx'
-import { Dashboard } from './pages/Dashboard.tsx'
+
 import WhatsAppPage from './pages/WhatsApp.tsx'
 import StorePage from './pages/Store.tsx'
 import './index.css'
@@ -37,13 +37,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 >
                     <Smartphone size={18} />
                 </Link>
-                <Link
-                    to="/dashboard"
-                    className={`p-2.5 rounded-full transition-all ${path === '/dashboard' ? 'bg-[#b24545] text-white shadow-md' : 'text-gray-400 hover:text-[#090c19] hover:bg-gray-100'}`}
-                    title="Dashboard"
-                >
-                    <LayoutDashboard size={18} />
-                </Link>
+
             </nav>
             {children}
         </>
@@ -63,7 +57,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                         <Route path="/" element={<ChatPage />} />
                         <Route path="/whatsapp" element={<WhatsAppPage />} />
                         <Route path="/store" element={<StorePage />} />
-                        <Route path="/dashboard" element={<Dashboard />} />
+
                     </Routes>
                 </Layout>
             </BrowserRouter>

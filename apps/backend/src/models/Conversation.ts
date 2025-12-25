@@ -24,6 +24,7 @@ export interface IConversation extends Document {
   messages: IMessage[];
   currentDiscount: number;
   discountRequestCount: number;
+  discountEscalations: number;
   pendingOrder?: IPendingOrder;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ const conversationSchema = new Schema<IConversation>({
   messages: [messageSchema],
   currentDiscount: { type: Number, default: 0 },
   discountRequestCount: { type: Number, default: 0 },
+  discountEscalations: { type: Number, default: 0 },
   pendingOrder: { type: pendingOrderSchema }
 }, {
   timestamps: true

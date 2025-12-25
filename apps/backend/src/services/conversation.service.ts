@@ -13,7 +13,8 @@ export class ConversationService {
         sessionId,
         messages: [],
         currentDiscount: 0,
-        discountRequestCount: 0
+        discountRequestCount: 0,
+        discountEscalations: 0
       });
       await conversation.save();
     }
@@ -41,7 +42,7 @@ export class ConversationService {
       { sessionId },
       { 
         $push: { messages: message },
-        $setOnInsert: { sessionId, currentDiscount: 0, discountRequestCount: 0 }
+        $setOnInsert: { sessionId, currentDiscount: 0, discountRequestCount: 0, discountEscalations: 0 }
       },
       { upsert: true, new: true }
     );
@@ -91,7 +92,7 @@ export class ConversationService {
   async clearConversation(sessionId: string): Promise<void> {
     await Conversation.findOneAndUpdate(
       { sessionId },
-      { $set: { messages: [], currentDiscount: 0, discountRequestCount: 0, pendingOrder: null } }
+      { $set: { messages: [], currentDiscount: 0, discountRequestCount: 0, discountEscalations: 0, pendingOrder: null } }
     );
   }
 
@@ -126,7 +127,8 @@ export class ConversationService {
       sessionId,
       messages: [],
       currentDiscount: 0,
-      discountRequestCount: 0
+      discountRequestCount: 0,
+      discountEscalations: 0
     });
     await conversation.save();
     return sessionId;
@@ -137,11 +139,12 @@ export class ConversationService {
   /**
    * Get current discount state for a session
    */
-  async getDiscountState(sessionId: string): Promise<{ currentDiscount: number; requestCount: number }> {
+  async getDiscountState(sessionId: string): Promise<{ currentDiscount: number; requestCount: number; escalations: number }> {
     const conversation = await Conversation.findOne({ sessionId });
     return {
       currentDiscount: conversation?.currentDiscount || 0,
-      requestCount: conversation?.discountRequestCount || 0
+      requestCount: conversation?.discountRequestCount || 0,
+      escalations: conversation?.discountEscalations || 0
     };
   }
 
@@ -162,6 +165,18 @@ export class ConversationService {
     );
 
     return newDiscount;
+  }
+
+  /**
+   * Increase escalation count
+   */
+  async incrementEscalationCount(sessionId: string): Promise<number> {
+    const conversation = await Conversation.findOneAndUpdate(
+      { sessionId },
+      { $inc: { discountEscalations: 1 } },
+      { new: true }
+    );
+    return conversation?.discountEscalations || 0;
   }
 
   /**
