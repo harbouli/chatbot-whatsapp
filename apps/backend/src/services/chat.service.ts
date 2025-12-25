@@ -396,12 +396,28 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
     // 2. Save user message to history
     await this.conversationService.addMessage(currentSessionId, 'user', message);
     
-    // 3. Analyze message intent
-    const intent = await this.intentService.analyzeIntent(message);
-    console.log('Message intent:', intent);
-    
-    // 4. Get discount state
+    // 3. Get session state (discount & pending order)
     const discountState = await this.conversationService.getDiscountState(currentSessionId);
+    const pendingOrder = await this.conversationService.getPendingOrder(currentSessionId);
+    
+    // Construct context description for intent analysis
+    let contextDescription = "";
+    if (discountState.currentDiscount > 0) {
+      contextDescription += `Active Discount: ${discountState.currentDiscount}%. `;
+    }
+    
+    if (pendingOrder) {
+      const missingFields = this.getMissingOrderFields(pendingOrder);
+      if (missingFields.length > 0) {
+         contextDescription += `Pending Order: User confirmed "${pendingOrder.productName}". AI is currently waiting for: ${missingFields.join(", ")}. `;
+      } else {
+         contextDescription += `Pending Order: Ready for final confirmation. waiting for user to say "yes" or "confirm". `;
+      }
+    }
+
+    // 4. Analyze message intent with context
+    const intent = await this.intentService.analyzeIntent(message, historyText, contextDescription);
+    console.log('Message intent:', intent);
     
     let response: string;
     let sources: any[] = [];
