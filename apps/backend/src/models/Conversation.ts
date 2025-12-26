@@ -5,6 +5,7 @@ export interface IMessage {
   content: string;
   sources?: any[];
   timestamp: Date;
+  messageId?: string; // WhatsApp message ID for threading/replies
 }
 
 export interface IPendingOrder {
@@ -34,7 +35,8 @@ const messageSchema = new Schema<IMessage>({
   role: { type: String, enum: ['user', 'assistant'], required: true },
   content: { type: String, required: true },
   sources: { type: Schema.Types.Mixed },
-  timestamp: { type: Date, default: Date.now }
+  timestamp: { type: Date, default: Date.now },
+  messageId: { type: String }
 });
 
 const pendingOrderSchema = new Schema<IPendingOrder>({

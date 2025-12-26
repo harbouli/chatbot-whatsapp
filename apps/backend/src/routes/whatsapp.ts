@@ -106,4 +106,34 @@ router.post('/disconnect', async (req, res) => {
   }
 });
 
+/**
+ * POST /whatsapp/send
+ * Send a message, optionally repling to a specific message ID
+ * Body: { sessionId: "optional", to: "212...", text: "Hello", replyToId: "optional-message-id" }
+ */
+router.post('/send', async (req, res) => {
+    try {
+        const { sessionId, to, text, replyToId } = req.body;
+        
+        if (!to || !text) {
+            return res.status(400).json({ error: 'To and Text are required' });
+        }
+
+        const whatsappService = getWhatsAppService();
+        
+        // Format JID if it's just a number
+        let jid = to;
+        if (!jid.includes('@s.whatsapp.net')) {
+            jid = `${jid.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+        }
+
+        await whatsappService.sendMessage(sessionId || 'default', jid, text, undefined, replyToId);
+        
+        res.json({ success: true, message: 'Message sent' });
+    } catch (error: any) {
+        console.error('WhatsApp send error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 export default router;

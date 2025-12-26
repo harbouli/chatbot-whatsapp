@@ -223,8 +223,6 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
     
     // If a product is identified from history and it's DIFFERENT from pending, update it.
     // Or if no pending order exists, try to set it from identified product.
-    // If a product is identified from history and it's DIFFERENT from pending, update it.
-    // Or if no pending order exists, try to set it from identified product.
     if (identifiedProduct) {
        // Search for this specific product to get metadata
        const hits = await this.ragService.searchSimilar(identifiedProduct, 1);
@@ -380,7 +378,7 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
   /**
    * Main chat processing method
    */
-  async processMessage(message: string, sessionId?: string): Promise<ChatResponse> {
+  async processMessage(message: string, sessionId?: string, messageId?: string): Promise<ChatResponse> {
     const currentSessionId = sessionId || `session_${Date.now()}`;
 
     // 1. Get conversation history
@@ -388,7 +386,7 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
     const historyText = this.conversationService.formatHistoryForPrompt(history);
     
     // 2. Save user message to history
-    await this.conversationService.addMessage(currentSessionId, 'user', message);
+    await this.conversationService.addMessage(currentSessionId, 'user', message, undefined, messageId);
     
     // 3. Get session state (discount & pending order)
     const discountState = await this.conversationService.getDiscountState(currentSessionId);

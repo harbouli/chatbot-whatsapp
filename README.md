@@ -8,16 +8,18 @@
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-A powerful monorepo featuring an AI-driven WhatsApp chatbot for e-commerce, built with a modern tech stack. This project utilizes Retrieval-Augmented Generation (RAG) to provide accurate product recommendations and process orders directly through WhatsApp.
+A powerful monorepo featuring an AI-driven WhatsApp chatbot for e-commerce, built with a modern tech stack. This project utilizes Retrieval-Augmented Generation (RAG) to provide accurate product recommendations, intelligently negotiate prices, and process orders directly through WhatsApp.
 
 ## 🌟 Features
 
--   **AI Sales Agent**: Powered by **DeepSeek LLM**, acting as a friendly salesperson named "Mohamed".
+-   **AI Sales Agent**: Powered by **Anthropic Claude** (Claude 3.5 Sonnet), acting as a friendly salesperson named "Mohamed".
 -   **RAG Architecture**: Uses **Pinecone** for vector search to retrieve relevant product info from the catalog.
 -   **WhatsApp Integration**: Built with **Baileys** to interact directly on WhatsApp.
+    -   **Multi-Session Support**: Manage multiple WhatsApp connections/phone numbers simultaneously.
+    -   **Reply Capability**: Supports replying to specific messages for clearer context.
 -   **Order Management**: Captures and saves customer orders to **MongoDB**.
 -   **Smart Discounting**: Intelligent negotiation logic with discount guardrails.
--   **Multi-language Support**: Automatically detects and responds in English or French / Darija.
+-   **Multi-language Support**: Automatically detects and responds in **English**, **French**, and **Moroccan Darija (Arabizi)**.
 -   **Modern Dashboard**: React-based frontend for managing products, viewing orders, and monitoring the system.
 
 ## 🏗 Architecture
@@ -26,7 +28,7 @@ This project is a monorepo managed with **PNPM Workspaces**:
 
 -   **`apps/backend`**: Node.js/Express server.
     -   Handles WhatsApp socket connection.
-    -   Manages RAG logic with DeepSeek & Pinecone.
+    -   Manages RAG logic with Anthropic & Pinecone.
     -   Exposes API endpoints for the frontend.
 -   **`apps/frontend`**: React (Vite) application.
     -   Admin dashboard for product management.
@@ -41,7 +43,7 @@ This project is a monorepo managed with **PNPM Workspaces**:
 -   [PNPM](https://pnpm.io/) (`npm install -g pnpm`)
 -   [Docker](https://www.docker.com/) & Docker Compose
 -   **API Keys**:
-    -   DeepSeek API Key
+    -   Anthropic API Key (Claude)
     -   Pinecone API Key & Index
 
 ### Environment Setup
@@ -62,8 +64,9 @@ This project is a monorepo managed with **PNPM Workspaces**:
     MONGO_URI=mongodb://localhost:27017/rag_chatbot # Use 'mongo' instead of 'localhost' if running via Docker
     
     # AI & Vector DB
-    DEEPSEEK_API_KEY=your_deepseek_key
-    DEEPSEEK_MODEL=deepseek-chat
+    ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+    CLAUDE_MODEL=claude-3-5-sonnet-20240620
+    
     PINECONE_API_KEY=your_pinecone_key
     PINECONE_INDEX=your_index_name
 
@@ -115,7 +118,7 @@ docker-compose up --build
 ### Backend
 -   **Runtime**: Node.js
 -   **Framework**: Express.js
--   **AI/LLM**: DeepSeek API (OpenAI compatible)
+-   **AI/LLM**: Anthropic Claude API
 -   **Vector DB**: Pinecone
 -   **Database**: MongoDB (Mongoose)
 -   **WhatsApp**: @whiskeysockets/baileys
@@ -131,8 +134,8 @@ docker-compose up --build
 ## 📝 Usage Guide
 
 1.  **Seeding Data**: Use the Frontend dashboard to "Seed Data". This embeds your products into Pinecone.
-2.  **QR Code**: Scan the QR code printed in the backend terminal (or exposed via API) to link your WhatsApp account.
-3.  **Chatting**: Send a message to the linked WhatsApp number. The AI agent "Mohamed" will reply.
+2.  **Connect WhatsApp**: Use the "WhatsApp" tab in the dashboard to request a QR code or pairing code.
+3.  **Chatting**: Send a message to the linked WhatsApp number. "Mohamed" will reply in the detected language (even Arabizi!).
 
 ## 🤝 Contributing
 

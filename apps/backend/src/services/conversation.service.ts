@@ -29,13 +29,15 @@ export class ConversationService {
     sessionId: string, 
     role: 'user' | 'assistant', 
     content: string,
-    sources?: any[]
+    sources?: any[],
+    messageId?: string
   ): Promise<IMessage> {
     const message: IMessage = {
       role,
       content,
       sources,
-      timestamp: new Date()
+      timestamp: new Date(),
+      messageId
     };
 
     await Conversation.findOneAndUpdate(
@@ -249,4 +251,3 @@ export class ConversationService {
     );
   }
 }
-

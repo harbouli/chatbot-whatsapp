@@ -45,12 +45,6 @@ export class WhatsAppService {
   }
 
   private getSessionAuthDir(sessionId: string): string {
-    // For backward compatibility or cleaner paths, if sessionId is 'default', 
-    // we could use 'auth_info/default' or just 'auth_info'. 
-    // ORIGINAL IMPLEMENTATION used 'auth_info' directly.
-    // To migrate safely:
-    // If we want to support multiple, we should separate them.
-    // Let's use subdirectories: auth_info/<sessionId>
     return path.join(this.baseAuthDir, sessionId);
   }
 
@@ -74,17 +68,19 @@ export class WhatsAppService {
    */
   async loadSessions(): Promise<void> {
     try {
-      const files = fs.readdirSync(this.baseAuthDir);
-      for (const file of files) {
-        const fullPath = path.join(this.baseAuthDir, file);
-        // Check if it is a directory and not a file (like ds store)
-        if (fs.statSync(fullPath).isDirectory()) {
-            console.log(`Restoring session: ${file}`);
-            // Don't await connection here to avoid blocking startup
-            this.connect(file).catch(err => {
-                console.error(`Failed to restore session ${file}:`, err);
-            });
-        }
+      if (fs.existsSync(this.baseAuthDir)) {
+          const files = fs.readdirSync(this.baseAuthDir);
+          for (const file of files) {
+            const fullPath = path.join(this.baseAuthDir, file);
+            // Check if it is a directory and not a file (like ds store)
+            if (fs.statSync(fullPath).isDirectory()) {
+                console.log(`Restoring session: ${file}`);
+                // Don't await connection here to avoid blocking startup
+                this.connect(file).catch(err => {
+                    console.error(`Failed to restore session ${file}:`, err);
+                });
+            }
+          }
       }
     } catch (error) {
       console.error('Failed to load sessions:', error);
@@ -231,6 +227,9 @@ export class WhatsAppService {
         // Use the sender's phone number as session ID for conversation context
         const conversationId = `whatsapp_${senderJid.replace('@s.whatsapp.net', '')}`;
         
+        // Extract message ID
+        const messageId = message.key.id;
+
         // Show typing indicator while processing (if enabled)
         const settings = agentConfig.getSettings();
         if (settings.typingDelay) {
@@ -238,7 +237,7 @@ export class WhatsAppService {
         }
         
       // Process message through chat service
-        const response = await this.chatService.processMessage(messageText, conversationId);
+        const response = await this.chatService.processMessage(messageText, conversationId, messageId || undefined);
         
         // Split response into multiple messages
         const messageParts = response.response.split(/(?:\n\n+)|(?:\\n\\n+)/).filter(part => part.trim().length > 0);
@@ -317,15 +316,29 @@ export class WhatsAppService {
   }
 
   /**
-   * Send a text message
+   * Send a text message, optionally replying to another message
    */
-  async sendMessage(sessionId: string, jid: string, text: string, quoted?: any): Promise<void> {
+  async sendMessage(sessionId: string, jid: string, text: string, quoted?: any, replyToId?: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session?.sock) {
       throw new Error(`WhatsApp session ${sessionId} not connected`);
     }
 
-    await session.sock.sendMessage(jid, { text }, { quoted });
+    let quoteObject = quoted;
+
+    // If replyToId is provided but no full quoted object, construct a minimal one
+    if (replyToId && !quoteObject) {
+       quoteObject = {
+         key: {
+            remoteJid: jid,
+            fromMe: false, // Assume we are replying to user
+            id: replyToId
+         },
+         message: { conversation: "..." } // Dummy content often works for key-based lookup
+       };
+    }
+
+    await session.sock.sendMessage(jid, { text }, { quoted: quoteObject });
   }
 
   /**
