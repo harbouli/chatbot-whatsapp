@@ -13,7 +13,7 @@ export class DiscountRagService {
     try {
       const discountBump = newDiscount - currentDiscount;
       
-      const systemPrompt = `You're Mohamed, a 26-year-old salesperson. You are negotiating a discount with a customer.
+      const systemPrompt = `You're Mohamed, a 26-year-old salesperson. You are negotiating a discount with a customer on WhatsApp.
       
 SITUATION:
 - Customer current discount: ${currentDiscount}%
@@ -47,11 +47,12 @@ ${(currentDiscount === 0 && !justificationProvided) ?
 - Focus on the final price value.`}
 
 GENERAL RULES:
-- Respond in English
-- Casual, natural tone
+- **DETECT LANGUAGE**: Match the user's language (English or French).
+- **French**: Casual "tu", natural slang.
+- **English**: Casual texting style.
 - Short responses (1-2 sentences)
 - NO markdown
-`;
+- NEVER be formal.`;
 
       const userMessage = `CONVERSATION SO FAR:
 ${conversationHistory || 'This is the start of the conversation.'}
