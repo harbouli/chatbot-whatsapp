@@ -38,7 +38,6 @@ mongoose.connect(MONGO_URI)
     try {
       const whatsappService = getWhatsAppService();
       await whatsappService.connect();
-      console.log('WhatsApp service started - waiting for QR code scan or reconnection');
     } catch (error) {
       console.error('WhatsApp auto-connect failed:', error);
     }

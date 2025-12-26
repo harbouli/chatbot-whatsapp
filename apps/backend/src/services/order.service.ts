@@ -26,10 +26,6 @@ export class OrderService {
 
     try {
       const savedOrder = await order.save();
-      console.log(`[OrderService] Order successfully saved to "orders" collection.`);
-      console.log(`[OrderService] Order ID: ${savedOrder._id}`);
-      console.log(`[OrderService] Product: ${savedOrder.productName}`);
-      console.log(`[OrderService] Customer: ${savedOrder.customerName}`);
       return savedOrder;
     } catch (error) {
       console.error('[OrderService] Failed to save order:', error);

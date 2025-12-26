@@ -69,7 +69,6 @@ ${history || "No history."}
         temperature: 0.3,
       });
 
-      console.log(response.choices[0]?.message?.content);
 
       const text = response.choices[0]?.message?.content?.trim() || "";
 

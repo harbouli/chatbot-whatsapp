@@ -238,7 +238,6 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
             !pendingOrder.productName.toLowerCase().includes(identifiedProduct.toLowerCase());
 
          if (!pendingOrder || isDifferentProduct) {
-            console.log(`Switching product context to: ${top.name}`);
             const originalPrice = Math.round(top.price * 10);
             const discountedPrice = currentDiscount > 0 
                 ? this.applyDiscount(originalPrice, currentDiscount)
@@ -257,16 +256,9 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
     }
 
     if (!pendingOrder) {
-      console.log("No pending order found, searching context...");
-      // Fallback: search similar to the current message if history didn't help (rare)
       const searchResults = await this.ragService.searchSimilar(message);
       if (searchResults.length > 0) {
-        // Only set if the search result is strong/relevant (sanity check?)
-        // For "Yes" or "Confirm", similar search is random. 
-        // We should probably NOT create a pending order from "Yes" if we don't have one. 
-        // But for now, let's keep it but log it.
         const topProduct = searchResults[0].metadata as any;
-        console.log(`Fallback identified product: ${topProduct.name}`);
         
         const originalPrice = Math.round(topProduct.price * 10);
         const discountedPrice = currentDiscount > 0 
@@ -289,23 +281,16 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
     let orderStatus: { pending: boolean; confirmed: boolean; orderId?: string };
 
     if (missingFields.length === 0 && pendingOrder) {
-      // Final confirmation: Ensure we have all logic to creating the order
       await this.conversationService.confirmOrder(sessionId);
-      
-      console.log('Attempting to create order...');
       const savedOrder = await this.orderService.createOrder(
         sessionId,
         pendingOrder,
         currentDiscount
       );
       
-      // Verify persistence immediately
       const verifiedOrder = await this.orderService.getOrderById(savedOrder._id.toString());
       if (!verifiedOrder) {
-        console.error('CRITICAL: Order was saved but could not be retrieved immediately!');
         throw new Error('Order persistence failed');
-      } else {
-        console.log('Order verified in database:', verifiedOrder._id);
       }
 
       await this.conversationService.clearPendingOrder(sessionId);
@@ -315,14 +300,10 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
         confirmed: true,
         orderId: savedOrder._id.toString()
       };
-      
-      console.log('Order saved to database and verified (confirmation intent):', savedOrder._id);
     } else {
       orderStatus = { pending: true, confirmed: false };
     }
     
-    // In handleOrderConfirmation, if we saved it, orderConfirmed is true.
-    // If we have missing fields, orderConfirmed is false.
     const orderConfirmed = !!(orderStatus && orderStatus.confirmed);
 
     const response = await this.ragService.generateOrderConfirmationResponse(
@@ -430,7 +411,6 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
 
     // 4. Analyze message intent with context
     const intent = await this.intentService.analyzeIntent(message, historyText, contextDescription);
-    console.log('Message intent:', intent);
     
     let response: string;
     let sources: any[] = [];

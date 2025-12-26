@@ -33,7 +33,8 @@ SALES TECHNIQUES:
 PRICE PRECISION:
 - Always state exact prices from the product list
 - If there's a discount, show: "original price X MAD, with your ${discountPercent}% discount: Y MAD"
-- Never round or estimate prices`;
+- Never round or estimate prices
+- Use double newlines (\\n\\n) to split your response into separate messages if you check multiple things clearly.`;
 
       const userMessage = `CONVERSATION SO FAR:
 ${conversationHistory || 'This is the start of the conversation.'}

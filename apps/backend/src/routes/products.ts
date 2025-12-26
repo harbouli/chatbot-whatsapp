@@ -50,10 +50,8 @@ router.post('/', async (req, res) => {
       { name, description, price, quantity, inStock: quantity > 0 }
     );
 
-    console.log(`Product created and synced to vector DB: ${name}`);
     res.status(201).json(product);
   } catch (error) {
-    console.error('Failed to create product:', error);
     res.status(500).json({ error: 'Failed to create product' });
   }
 });
@@ -93,10 +91,8 @@ router.put('/:id', async (req, res) => {
       }
     );
 
-    console.log(`Product updated and synced to vector DB: ${product.name}`);
     res.json(product);
   } catch (error) {
-    console.error('Failed to update product:', error);
     res.status(500).json({ error: 'Failed to update product' });
   }
 });
@@ -135,10 +131,8 @@ router.patch('/:id/quantity', async (req, res) => {
       }
     );
 
-    console.log(`Product quantity updated: ${product.name} = ${quantity}`);
     res.json(product);
   } catch (error) {
-    console.error('Failed to update quantity:', error);
     res.status(500).json({ error: 'Failed to update quantity' });
   }
 });
@@ -156,15 +150,12 @@ router.delete('/:id', async (req, res) => {
     // Delete from Vector DB
     try {
       await ragService.deleteVector(id);
-      console.log(`Product deleted from MongoDB and vector DB: ${id}`);
     } catch (vectorError) {
-      console.error('Failed to delete from vector DB (may not exist):', vectorError);
       // Continue anyway - product is deleted from MongoDB
     }
 
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
-    console.error('Failed to delete product:', error);
     res.status(500).json({ error: 'Failed to delete product' });
   }
 });
@@ -189,10 +180,8 @@ router.post('/sync', async (req, res) => {
       );
     }
 
-    console.log(`Synced ${products.length} products to vector DB`);
     res.json({ message: `Synced ${products.length} products to vector database` });
   } catch (error) {
-    console.error('Failed to sync products:', error);
     res.status(500).json({ error: 'Failed to sync products' });
   }
 });

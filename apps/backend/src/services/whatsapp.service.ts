@@ -43,7 +43,6 @@ export class WhatsAppService {
    */
   async connect(): Promise<void> {
     if (this.sock) {
-      console.log('WhatsApp already connected or connecting');
       return;
     }
 
@@ -69,7 +68,6 @@ export class WhatsAppService {
         await this.handleIncomingMessages(m);
       });
 
-      console.log('WhatsApp service initialized');
     } catch (error) {
       console.error('Failed to initialize WhatsApp:', error);
       this.connectionStatus = 'disconnected';
@@ -86,7 +84,6 @@ export class WhatsAppService {
 
     // Handle QR code
     if (qr && !this.pairingCodeRequested) {
-      console.log('New QR code received');
       try {
         this.currentQR = await QRCode.toDataURL(qr);
         this.connectionStatus = 'connecting';
@@ -100,8 +97,6 @@ export class WhatsAppService {
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       
-      console.log('Connection closed. Status code:', statusCode, 'Reconnecting:', shouldReconnect);
-      
       this.connectionStatus = 'disconnected';
       this.currentQR = null;
       this.sock = null;
@@ -114,7 +109,6 @@ export class WhatsAppService {
         this.clearAuth();
       }
     } else if (connection === 'open') {
-      console.log('WhatsApp connected successfully!');
       this.connectionStatus = 'connected';
       this.currentQR = null;
       this.pairingCodeRequested = false;
@@ -122,7 +116,6 @@ export class WhatsAppService {
       // Get phone number from socket
       if (this.sock?.user) {
         this.phoneNumber = this.sock.user.id.split(':')[0];
-        console.log('Connected as:', this.phoneNumber);
       }
     }
   }
@@ -151,15 +144,11 @@ export class WhatsAppService {
       // Extract message text
       const messageText = this.extractMessageText(message);
       if (!messageText) {
-        console.log('Received non-text message, skipping');
         continue;
       }
 
-      console.log(`[WhatsApp] Received from ${senderJid}: ${messageText}`);
-
       // Check if auto-respond is enabled
       if (!agentConfig.isAutoRespondEnabled()) {
-        console.log('[WhatsApp] Auto-respond is disabled, skipping response');
         continue;
       }
 
@@ -173,20 +162,32 @@ export class WhatsAppService {
           await this.simulateTyping(senderJid);
         }
         
-        // Process message through chat service
+      // Process message through chat service
         const response = await this.chatService.processMessage(messageText, sessionId);
         
-        console.log(`[WhatsApp] Sending response: ${response.response}`);
+        // Split response into multiple messages
+        // Split by double newlines (real or literal escaped) to separate distinct paragraphs/ideas
+        // Regex handles: \n\n+ (real newlines), \\n\\n+ (literal \n chars), or mixed
+        const messageParts = response.response.split(/(?:\n\n+)|(?:\\n\\n+)/).filter(part => part.trim().length > 0);
         
-        // Simulate typing based on response length before sending
-        if (settings.typingDelay) {
-          await this.simulateTyping(senderJid, response.response.length);
+        // Use "Reply" feature if the user asked multiple questions (heuristic: > 1 question mark)
+        const questionCount = (messageText.match(/\?/g) || []).length;
+        const shouldQuote = questionCount > 1;
+
+        for (let i = 0; i < messageParts.length; i++) {
+          const part = messageParts[i];
+          // Simulate typing based on part length
+          if (settings.typingDelay) {
+            await this.simulateTyping(senderJid, part.length);
+          }
+          
+          // Send part
+          // Only quote on the first message bubble to avoid spamming quotes
+          const quotedMessage = (shouldQuote && i === 0) ? message : undefined;
+          await this.sendMessage(senderJid, part.trim(), quotedMessage);
         }
-        
-        // Send response back
-        await this.sendMessage(senderJid, response.response);
+
       } catch (error) {
-        console.error('Error processing WhatsApp message:', error);
         // Send error message
         await this.sendMessage(senderJid, `Sorry, I encountered an error. Please try again. - ${agentConfig.firstName}`);
       }
@@ -227,31 +228,37 @@ export class WhatsAppService {
       // Send "composing" (typing) presence
       await this.sock.sendPresenceUpdate('composing', jid);
       
-      // Calculate typing duration based on message length
-      // Average typing speed: ~40 words per minute = ~200 chars per minute
-      // So ~3.3 chars per second, but we'll make it faster for better UX
-      // Minimum 1 second, maximum 4 seconds
-      const typingDuration = Math.min(4000, Math.max(1000, messageLength * 20));
+      // Calculate realistic typing duration
+      // Average human typing speed: ~200-300 characters per minute
+      // roughly 200-300ms per character is too slow for a bot (feels like lag)
+      // A "fast texter" human: ~80-100ms per character
       
-      console.log(`[WhatsApp] Typing for ${typingDuration}ms...`);
+      const updateInterval = 60; // ms per char (approx 1000 chars/min = ~160 wpm - specific for fast reading context)
+      const baseDelay = 500; // minimum processing/thinking time
+      const randomVariance = Math.random() * 500; // 0-500ms random variance
+      
+      const calculatedDuration = baseDelay + (messageLength * updateInterval) + randomVariance;
+      
+      // Cap at reasonable limits to avoid frustration (min 1s, max 8s)
+      const typingDuration = Math.min(8000, Math.max(1000, calculatedDuration));
+      
       await new Promise(resolve => setTimeout(resolve, typingDuration));
       
       // Send "paused" presence to stop typing indicator
       await this.sock.sendPresenceUpdate('paused', jid);
     } catch (error) {
-      console.error('Error simulating typing:', error);
     }
   }
 
   /**
    * Send a text message
    */
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(jid: string, text: string, quoted?: any): Promise<void> {
     if (!this.sock) {
       throw new Error('WhatsApp not connected');
     }
 
-    await this.sock.sendMessage(jid, { text });
+    await this.sock.sendMessage(jid, { text }, { quoted });
   }
 
   /**
@@ -273,10 +280,8 @@ export class WhatsAppService {
     
     // Phone number must be in E.164 format without + (e.g., 12345678901)
     const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-    console.log('Requesting pairing code for:', cleanNumber);
     
     const code = await this.sock.requestPairingCode(cleanNumber);
-    console.log('Pairing code:', code);
     
     return code;
   }

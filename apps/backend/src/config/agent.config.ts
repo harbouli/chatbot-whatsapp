@@ -40,7 +40,6 @@ export const agentConfig = {
 
   updateSettings(newSettings: Partial<AgentSettings>): AgentSettings {
     settings = { ...settings, ...newSettings };
-    console.log('Agent settings updated:', settings);
     return settings;
   },
 
@@ -50,6 +49,5 @@ export const agentConfig = {
 
   setAutoRespond(enabled: boolean): void {
     settings.autoRespond = enabled;
-    console.log(`Auto-respond ${enabled ? 'enabled' : 'disabled'}`);
   }
 };
