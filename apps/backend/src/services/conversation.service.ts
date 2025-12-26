@@ -83,7 +83,7 @@ export class ConversationService {
     }
 
     return messages.map(msg => {
-      const role = msg.role === 'user' ? 'Customer' : 'Sarah';
+      const role = msg.role === 'user' ? 'Customer' : 'Mohamed';
       return `${role}: ${msg.content}`;
     }).join('\n');
   }

@@ -375,13 +375,13 @@ export default function ChatPage() {
                     {messages.length === 0 && (
                         <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-up">
                             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#f6cb6e] to-[#b24545] flex items-center justify-center mb-4 shadow-xl shadow-[#b24545]/20">
-                                <span className="text-white text-2xl font-bold">S</span>
+                                <span className="text-white text-2xl font-bold">M</span>
                             </div>
                             <h1 className="text-xl font-semibold text-[#090c19] mb-1">
                                 Hey there! 👋
                             </h1>
                             <p className="text-gray-500 text-sm text-center max-w-xs">
-                                I'm Sarah. Ask me anything or just chat - I don't bite!
+                                I'm Mohamed. Ask me anything or just chat - I don't bite!
                             </p>
                         </div>
                     )}
@@ -457,7 +457,7 @@ export default function ChatPage() {
                                         handleSend();
                                     }
                                 }}
-                                placeholder="Message Sarah..."
+                                placeholder="Message Mohamed..."
                                 rows={1}
                                 className="flex-1 bg-transparent text-[#090c19] placeholder-gray-400 px-4 py-2.5 focus:outline-none resize-none text-[15px]"
                                 disabled={isLoading}
