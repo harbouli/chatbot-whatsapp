@@ -19,59 +19,123 @@ export interface WhatsAppStatus {
   error?: string;
 }
 
+interface Session {
+  id: string;
+  sock: WASocket | null;
+  status: 'disconnected' | 'connecting' | 'connected';
+  qrCode: string | null;
+  phoneNumber: string | null;
+  pairingCodeRequested: boolean;
+  reconnectAttempts: number;
+}
+
 export class WhatsAppService {
-  private sock: WASocket | null = null;
+  private sessions: Map<string, Session> = new Map();
   private chatService: ChatService;
-  private currentQR: string | null = null;
-  private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
-  private phoneNumber: string | null = null;
-  private authDir: string;
-  private pairingCodeRequested: boolean = false;
+  private baseAuthDir: string;
 
   constructor() {
     this.chatService = new ChatService();
-    this.authDir = path.join(process.cwd(), 'auth_info');
+    this.baseAuthDir = path.join(process.cwd(), 'auth_info');
     
-    // Create auth directory if it doesn't exist
-    if (!fs.existsSync(this.authDir)) {
-      fs.mkdirSync(this.authDir, { recursive: true });
+    // Create base auth directory if it doesn't exist
+    if (!fs.existsSync(this.baseAuthDir)) {
+      fs.mkdirSync(this.baseAuthDir, { recursive: true });
+    }
+  }
+
+  private getSessionAuthDir(sessionId: string): string {
+    // For backward compatibility or cleaner paths, if sessionId is 'default', 
+    // we could use 'auth_info/default' or just 'auth_info'. 
+    // ORIGINAL IMPLEMENTATION used 'auth_info' directly.
+    // To migrate safely:
+    // If we want to support multiple, we should separate them.
+    // Let's use subdirectories: auth_info/<sessionId>
+    return path.join(this.baseAuthDir, sessionId);
+  }
+
+  private initializeSession(sessionId: string): Session {
+    if (!this.sessions.has(sessionId)) {
+      this.sessions.set(sessionId, {
+        id: sessionId,
+        sock: null,
+        status: 'disconnected',
+        qrCode: null,
+        phoneNumber: null,
+        pairingCodeRequested: false,
+        reconnectAttempts: 0
+      });
+    }
+    return this.sessions.get(sessionId)!;
+  }
+
+  /**
+   * Load and connect all existing sessions
+   */
+  async loadSessions(): Promise<void> {
+    try {
+      const files = fs.readdirSync(this.baseAuthDir);
+      for (const file of files) {
+        const fullPath = path.join(this.baseAuthDir, file);
+        // Check if it is a directory and not a file (like ds store)
+        if (fs.statSync(fullPath).isDirectory()) {
+            console.log(`Restoring session: ${file}`);
+            // Don't await connection here to avoid blocking startup
+            this.connect(file).catch(err => {
+                console.error(`Failed to restore session ${file}:`, err);
+            });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
     }
   }
 
   /**
-   * Initialize WhatsApp connection
+   * Initialize WhatsApp connection for a session
    */
-  async connect(): Promise<void> {
-    if (this.sock) {
+  async connect(sessionId: string = 'default'): Promise<void> {
+    const session = this.initializeSession(sessionId);
+
+    if (session.sock) {
       return;
     }
 
     try {
-      this.connectionStatus = 'connecting';
-      const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
+      session.status = 'connecting';
+      const authDir = this.getSessionAuthDir(sessionId);
+      
+      // Ensure directory exists
+      if (!fs.existsSync(authDir)) {
+        fs.mkdirSync(authDir, { recursive: true });
+      }
 
-      this.sock = makeWASocket({
+      const { state, saveCreds } = await useMultiFileAuthState(authDir);
+
+      const sock = makeWASocket({
         auth: state,
         printQRInTerminal: true, // Also print in terminal for debugging
       });
 
+      session.sock = sock;
+
       // Handle connection updates
-      this.sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
-        await this.handleConnectionUpdate(update);
+      sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
+        await this.handleConnectionUpdate(sessionId, update);
       });
 
       // Save credentials when updated
-      this.sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('creds.update', saveCreds);
 
       // Handle incoming messages
-      this.sock.ev.on('messages.upsert', async (m) => {
-        await this.handleIncomingMessages(m);
+      sock.ev.on('messages.upsert', async (m) => {
+        await this.handleIncomingMessages(sessionId, m);
       });
 
     } catch (error) {
-      console.error('Failed to initialize WhatsApp:', error);
-      this.connectionStatus = 'disconnected';
-      this.sock = null;
+      console.error(`Failed to initialize WhatsApp session ${sessionId}:`, error);
+      session.status = 'disconnected';
+      session.sock = null;
       throw error;
     }
   }
@@ -79,16 +143,19 @@ export class WhatsAppService {
   /**
    * Handle connection state updates
    */
-  private async handleConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
+  private async handleConnectionUpdate(sessionId: string, update: Partial<ConnectionState>): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
     const { connection, lastDisconnect, qr } = update;
 
     // Handle QR code
-    if (qr && !this.pairingCodeRequested) {
+    if (qr && !session.pairingCodeRequested) {
       try {
-        this.currentQR = await QRCode.toDataURL(qr);
-        this.connectionStatus = 'connecting';
+        session.qrCode = await QRCode.toDataURL(qr);
+        session.status = 'connecting';
       } catch (error) {
-        console.error('Failed to generate QR code:', error);
+        console.error(`Failed to generate QR code for session ${sessionId}:`, error);
       }
     }
 
@@ -97,33 +164,41 @@ export class WhatsAppService {
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       
-      this.connectionStatus = 'disconnected';
-      this.currentQR = null;
-      this.sock = null;
+      session.status = 'disconnected';
+      session.qrCode = null;
+      session.sock = null;
       
       if (shouldReconnect) {
+        console.log(`Session ${sessionId} disconnected. Reconnecting...`);
         // Wait a bit before reconnecting
-        setTimeout(() => this.connect(), 3000);
+        setTimeout(() => this.connect(sessionId), 3000);
       } else {
+        console.log(`Session ${sessionId} logged out. Clearing auth.`);
         // Clear auth if logged out
-        this.clearAuth();
+        this.clearAuth(sessionId);
+        this.sessions.delete(sessionId);
       }
     } else if (connection === 'open') {
-      this.connectionStatus = 'connected';
-      this.currentQR = null;
-      this.pairingCodeRequested = false;
+      session.status = 'connected';
+      session.qrCode = null;
+      session.pairingCodeRequested = false;
+      session.reconnectAttempts = 0;
       
       // Get phone number from socket
-      if (this.sock?.user) {
-        this.phoneNumber = this.sock.user.id.split(':')[0];
+      if (session.sock?.user) {
+        session.phoneNumber = session.sock.user.id.split(':')[0];
       }
+      console.log(`Session ${sessionId} connected (${session.phoneNumber})`);
     }
   }
 
   /**
    * Handle incoming WhatsApp messages
    */
-  private async handleIncomingMessages(m: BaileysEventMap['messages.upsert']): Promise<void> {
+  private async handleIncomingMessages(sessionId: string, m: BaileysEventMap['messages.upsert']): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
     const { messages, type } = m;
 
     // Only process new messages (not history sync)
@@ -154,20 +229,18 @@ export class WhatsAppService {
 
       try {
         // Use the sender's phone number as session ID for conversation context
-        const sessionId = `whatsapp_${senderJid.replace('@s.whatsapp.net', '')}`;
+        const conversationId = `whatsapp_${senderJid.replace('@s.whatsapp.net', '')}`;
         
         // Show typing indicator while processing (if enabled)
         const settings = agentConfig.getSettings();
         if (settings.typingDelay) {
-          await this.simulateTyping(senderJid);
+          await this.simulateTyping(sessionId, senderJid);
         }
         
       // Process message through chat service
-        const response = await this.chatService.processMessage(messageText, sessionId);
+        const response = await this.chatService.processMessage(messageText, conversationId);
         
         // Split response into multiple messages
-        // Split by double newlines (real or literal escaped) to separate distinct paragraphs/ideas
-        // Regex handles: \n\n+ (real newlines), \\n\\n+ (literal \n chars), or mixed
         const messageParts = response.response.split(/(?:\n\n+)|(?:\\n\\n+)/).filter(part => part.trim().length > 0);
         
         // Use "Reply" feature if the user asked multiple questions (heuristic: > 1 question mark)
@@ -178,18 +251,17 @@ export class WhatsAppService {
           const part = messageParts[i];
           // Simulate typing based on part length
           if (settings.typingDelay) {
-            await this.simulateTyping(senderJid, part.length);
+            await this.simulateTyping(sessionId, senderJid, part.length);
           }
           
           // Send part
-          // Only quote on the first message bubble to avoid spamming quotes
           const quotedMessage = (shouldQuote && i === 0) ? message : undefined;
-          await this.sendMessage(senderJid, part.trim(), quotedMessage);
+          await this.sendMessage(sessionId, senderJid, part.trim(), quotedMessage);
         }
 
       } catch (error) {
         // Send error message
-        await this.sendMessage(senderJid, `Sorry, I encountered an error. Please try again. - ${agentConfig.firstName}`);
+        await this.sendMessage(sessionId, senderJid, `Sorry, I encountered an error. Please try again. - ${agentConfig.firstName}`);
       }
     }
   }
@@ -218,24 +290,18 @@ export class WhatsAppService {
 
   /**
    * Simulate typing indicator before sending a message
-   * @param jid - The chat JID to show typing in
-   * @param messageLength - Optional message length to calculate typing duration
    */
-  private async simulateTyping(jid: string, messageLength: number = 50): Promise<void> {
-    if (!this.sock) return;
+  private async simulateTyping(sessionId: string, jid: string, messageLength: number = 50): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session?.sock) return;
 
     try {
       // Send "composing" (typing) presence
-      await this.sock.sendPresenceUpdate('composing', jid);
+      await session.sock.sendPresenceUpdate('composing', jid);
       
-      // Calculate realistic typing duration
-      // Average human typing speed: ~200-300 characters per minute
-      // roughly 200-300ms per character is too slow for a bot (feels like lag)
-      // A "fast texter" human: ~80-100ms per character
-      
-      const updateInterval = 60; // ms per char (approx 1000 chars/min = ~160 wpm - specific for fast reading context)
-      const baseDelay = 500; // minimum processing/thinking time
-      const randomVariance = Math.random() * 500; // 0-500ms random variance
+      const updateInterval = 60; 
+      const baseDelay = 500; 
+      const randomVariance = Math.random() * 500; 
       
       const calculatedDuration = baseDelay + (messageLength * updateInterval) + randomVariance;
       
@@ -245,7 +311,7 @@ export class WhatsAppService {
       await new Promise(resolve => setTimeout(resolve, typingDuration));
       
       // Send "paused" presence to stop typing indicator
-      await this.sock.sendPresenceUpdate('paused', jid);
+      await session.sock.sendPresenceUpdate('paused', jid);
     } catch (error) {
     }
   }
@@ -253,35 +319,35 @@ export class WhatsAppService {
   /**
    * Send a text message
    */
-  async sendMessage(jid: string, text: string, quoted?: any): Promise<void> {
-    if (!this.sock) {
-      throw new Error('WhatsApp not connected');
+  async sendMessage(sessionId: string, jid: string, text: string, quoted?: any): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session?.sock) {
+      throw new Error(`WhatsApp session ${sessionId} not connected`);
     }
 
-    await this.sock.sendMessage(jid, { text }, { quoted });
+    await session.sock.sendMessage(jid, { text }, { quoted });
   }
 
   /**
    * Request pairing code for phone number login
    */
-  async requestPairingCode(phoneNumber: string): Promise<string> {
-    if (!this.sock) {
-      await this.connect();
-    }
+  async requestPairingCode(sessionId: string, phoneNumber: string): Promise<string> {
+    await this.connect(sessionId);
+    const session = this.sessions.get(sessionId);
 
     // Wait for socket to be ready
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    if (!this.sock) {
+    if (!session?.sock) {
       throw new Error('Failed to initialize WhatsApp socket');
     }
 
-    this.pairingCodeRequested = true;
+    session.pairingCodeRequested = true;
     
     // Phone number must be in E.164 format without + (e.g., 12345678901)
     const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
     
-    const code = await this.sock.requestPairingCode(cleanNumber);
+    const code = await session.sock.requestPairingCode(cleanNumber);
     
     return code;
   }
@@ -289,35 +355,59 @@ export class WhatsAppService {
   /**
    * Get current connection status
    */
-  getStatus(): WhatsAppStatus {
+  getStatus(sessionId: string = 'default'): WhatsAppStatus {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+        return { status: 'disconnected' };
+    }
     return {
-      status: this.connectionStatus,
-      qrCode: this.currentQR || undefined,
-      phoneNumber: this.phoneNumber || undefined,
+      status: session.status,
+      qrCode: session.qrCode || undefined,
+      phoneNumber: session.phoneNumber || undefined,
     };
+  }
+
+  /**
+   * Get all sessions
+   */
+  getAllSessions(): Record<string, WhatsAppStatus> {
+    const sessions: Record<string, WhatsAppStatus> = {};
+    for (const [id, session] of this.sessions.entries()) {
+        sessions[id] = {
+            status: session.status,
+            phoneNumber: session.phoneNumber || undefined,
+        };
+    }
+    return sessions;
   }
 
   /**
    * Disconnect from WhatsApp
    */
-  async disconnect(): Promise<void> {
-    if (this.sock) {
-      await this.sock.logout();
-      this.sock = null;
+  async disconnect(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session?.sock) {
+      await session.sock.logout();
+      session.sock = null;
     }
-    this.connectionStatus = 'disconnected';
-    this.currentQR = null;
-    this.phoneNumber = null;
-    this.clearAuth();
+    
+    if (session) {
+        session.status = 'disconnected';
+        session.qrCode = null;
+        session.phoneNumber = null;
+        this.clearAuth(sessionId);
+        this.sessions.delete(sessionId);
+    }
   }
 
   /**
    * Clear saved authentication
    */
-  private clearAuth(): void {
-    if (fs.existsSync(this.authDir)) {
-      fs.rmSync(this.authDir, { recursive: true, force: true });
-      fs.mkdirSync(this.authDir, { recursive: true });
+  private clearAuth(sessionId: string): void {
+    const authDir = this.getSessionAuthDir(sessionId);
+    if (fs.existsSync(authDir)) {
+      console.log(`Clearing auth for session ${sessionId}`);
+      fs.rmSync(authDir, { recursive: true, force: true });
     }
   }
 }

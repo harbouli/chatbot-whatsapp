@@ -1,7 +1,6 @@
 import { Pinecone } from '@pinecone-database/pinecone';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
-import path from 'path';
 
 // Ensure .env is loaded
 dotenv.config();
@@ -16,9 +15,8 @@ if (!apiKey) {
 export const pinecone = new Pinecone({ apiKey: apiKey || '' });
 export const pineconeIndex = pinecone.index(indexName);
 
-export const deepseek = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || '',
-  baseURL: 'https://api.deepseek.com',
+export const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
-export const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620';

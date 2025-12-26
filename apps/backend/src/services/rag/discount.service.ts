@@ -1,4 +1,4 @@
-import { deepseek, DEEPSEEK_MODEL } from './clients';
+import { anthropic, CLAUDE_MODEL } from './clients';
 
 export class DiscountRagService {
   async generateDiscountResponse(
@@ -47,7 +47,8 @@ ${(currentDiscount === 0 && !justificationProvided) ?
 - Focus on the final price value.`}
 
 GENERAL RULES:
-- **DETECT LANGUAGE**: Match the user's language (English or French).
+- **DETECT LANGUAGE**: Match the user's language (English, French, or Darija).
+- **DARIJA (ARABIZI)**: Use numbers for letters ('7', '3', '9', '5'). Urban Casablanca accent. Example: "Sma7 lia", "hadchi li kayn", "m3ak".
 - **French**: Casual "tu", natural slang.
 - **English**: Casual texting style.
 - Short responses (1-2 sentences)
@@ -64,19 +65,20 @@ Customer said: "${query}"
 
 Your response:`;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 150,
         temperature: 0.7,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: userMessage }
+        ]
       });
 
-      return response.choices[0]?.message?.content?.trim() || `Alright, let's see what we can do.`;
+      const textBlock = response.content[0];
+      return (textBlock.type === 'text' ? textBlock.text : "").trim() || `Alright, let's see what we can do.`;
     } catch (error) {
-      console.error('DeepSeek discount response error:', error);
+      console.error('Anthropic discount response error:', error);
       return `Alright, let's see what we can do.`;
     }
   }
@@ -100,25 +102,26 @@ INVALID REASONS:
 
 Return ONLY "true" if a reason is provided, "false" otherwise.`;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 10,
         temperature: 0.1,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: message }
+        ]
       });
 
-      const content = response.choices[0]?.message?.content?.toLowerCase().trim();
-      return content?.includes('true') || false;
+      const textBlock = response.content[0];
+      const content = (textBlock.type === 'text' ? textBlock.text : "").toLowerCase().trim();
+      return content.includes('true');
     } catch (error) {
       console.error('Justification analysis error:', error);
       return false; 
     }
   }
 
-  async extractProposedPriceOrDiscount(message: string): Promise<{ type: 'price' | 'percent', value: number } | null> {
+    async extractProposedPriceOrDiscount(message: string): Promise<{ type: 'price' | 'percent', value: number } | null> {
     try {
       const systemPrompt = `Analyze the user's message and extract if they are proposing a specific price or a discount percentage.
 Return ONLY a JSON object: {"type": "price" | "percent", "value": number} or null if no proposal found.
@@ -130,22 +133,39 @@ Return ONLY a JSON object: {"type": "price" | "percent", "value": number} or nul
 Example output: {"type": "price", "value": 12300}
 `;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ],
-        max_tokens: 50,
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 100,
         temperature: 0.1,
-        response_format: { type: 'json_object' }
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: message }
+        ]
       });
 
-      const content = response.choices[0]?.message?.content || 'null';
-      if (content === 'null') return null;
-      return JSON.parse(content);
+      const textBlock = response.content[0];
+      let content = (textBlock.type === 'text' ? textBlock.text : "").trim();
+      
+      if (!content || content.toLowerCase() === 'null') return null;
+
+      // Clean up potential markdown formatting
+      content = content.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+
+      try {
+        return JSON.parse(content);
+      } catch (parseError) {
+        // Try to find JSON-like pattern if full parse fails
+        const match = content.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            return JSON.parse(match[0]);
+          } catch(e) { /* ignore */ }
+        }
+        // If we still can't parse, just return null rather than throwing
+        return null;
+      }
     } catch (error) {
-      console.error('DeepSeek proposal extraction error:', error);
+      console.error('Anthropic proposal extraction error:', error);
       return null;
     }
   }

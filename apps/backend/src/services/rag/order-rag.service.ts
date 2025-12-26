@@ -1,4 +1,4 @@
-import { deepseek, DEEPSEEK_MODEL } from './clients';
+import { anthropic, CLAUDE_MODEL } from './clients';
 
 export class OrderRagService {
   async generateOrderConfirmationResponse(
@@ -25,27 +25,31 @@ ${orderSummary}
 STATUS: ${missingFields.length > 0 ? 'MISSING INFO' : (orderConfirmed ? 'ORDER SAVED' : 'WAITING FOR CONFIRMATION')}
 MISSING INFORMATION: ${missingFields.length > 0 ? missingFields.join(', ') : 'None'}
 
-RESPONSE LANGUAGE: DETECT and match user's language (English or French).
+RESPONSE LANGUAGE: DETECT and match user's language (English, French, or Darija).
 
 HOW TO RESPOND:
 ${missingFields.length > 0 ? 
 `- Ask for ALL missing information in ONE message
 - Be clear and direct but casual.
+- Darija: "Khassni smia, tele w l'adresse bach ncancelé lik la commande wla nvalidiha." -> Better: "Khassni smia, nemra d telephone w ladresse bach n'confirmer."
 - French: "Pour valider, j'ai besoin de ton nom, numéro et adresse."
 - English: "To wrap this up, I need your name, phone, and address please."
 - Make it easy.` :
 (!orderConfirmed ? 
 `- Summarize the full order details for the user to review
-- Ask them explicitly to confirm: "Please verify: [Product] for [Price] to [Address]? Reply YES to confirm." (or French equivalent)
+- Ask them explicitly to confirm: "Please verify: [Product] for [Price] to [Address]? Reply YES to confirm." (or French/Darija equivalent)
+- Darija: "Confirmer lia 3afak: [Product] b [Price]. Safi nvalidé?"
 - Do NOT say the order is placed yet. verification is required.` :
 `- Confirm the order is officially placed and saved
 - Say something like: "Perfect! Your order is confirmed and saved. We'll deliver [product] to [address]. Total: [price] MAD" (or French equivalent)
+- Darija: "Safi c'est noté! La commande d [product] t'validat. Ghadi nlivriwha l [address]. Total: [price] MAD. Merci bzf!"
 - Thank them`)}
 
 TONE:
-- Casual ("tu" in French).
+- Casual.
 - No markdown.
-- Natural.`;
+- Natural.
+- ARABIZI for Darija (numbers: 7, 3, 9).`;
 
       const userMessage = `CONVERSATION SO FAR:
 ${conversationHistory || 'This is the start of the conversation.'}
@@ -54,19 +58,20 @@ Customer said: "${query}"
 
 Your response (collect info, ask for confirmation, or confirm saved):`;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 150,
         temperature: 0.7,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: userMessage }
+        ]
       });
 
-      return response.choices[0]?.message?.content?.trim() || "To complete your order, please provide your name, phone number, and delivery address.";
+      const textBlock = response.content[0];
+      return (textBlock.type === 'text' ? textBlock.text : "").trim() || "To complete your order, please provide your name, phone number, and delivery address.";
     } catch (error) {
-      console.error('DeepSeek order confirmation error:', error);
+      console.error('Anthropic order confirmation error:', error);
       return "To complete your order, please provide your name, phone number, and delivery address.";
     }
   }
@@ -94,21 +99,29 @@ IMPORTANT:
 - But still satisfy: "Samsung" is NOT a name.
 - If unsure about a name vs a city, prefer City for address.`;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 100,
         temperature: 0.1,
-        response_format: { type: 'json_object' }
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: message }
+        ]
       });
 
-      const content = response.choices[0]?.message?.content || '{}';
-      return JSON.parse(content);
+      const textBlock = response.content[0];
+      const content = (textBlock.type === 'text' ? textBlock.text : "").trim() || '{}';
+      
+      const cleaned = content.replace(/```json\n?|\n?```/g, "").trim();
+      
+      try {
+           return JSON.parse(cleaned);
+      } catch (e) {
+          const match = cleaned.match(/\{[\s\S]*\}/);
+          return match ? JSON.parse(match[0]) : {};
+      }
     } catch (error) {
-      console.error('DeepSeek extraction error:', error);
+      console.error('Anthropic extraction error:', error);
       return {};
     }
   }
@@ -120,20 +133,21 @@ Return ONLY the product name. If unclear or multiple products discussed without 
 Example: "Samsung Galaxy S25 Ultra"
 `;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: history }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 50,
         temperature: 0.1,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: history }
+        ]
       });
 
-      const productName = response.choices[0]?.message?.content?.trim() || "null";
+      const textBlock = response.content[0];
+      const productName = (textBlock.type === 'text' ? textBlock.text : "").trim() || "null";
       return productName === "null" ? null : productName;
     } catch (error) {
-      console.error('DeepSeek product identification error:', error);
+      console.error('Anthropic product identification error:', error);
       return null;
     }
   }

@@ -1,4 +1,4 @@
-import { deepseek, DEEPSEEK_MODEL } from './clients';
+import { anthropic, CLAUDE_MODEL } from './clients';
 
 export class ProductRagService {
   async generateProductInquiryResponse(
@@ -23,7 +23,8 @@ CRITICAL RULES:
 - NEVER use formal language.
 
 LANGUAGE & TONE:
-- **DETECT LANGUAGE**: Match the user's language (English or French).
+- **DETECT LANGUAGE**: Match the user's language (English, French, or Darija).
+- **DARIJA (ARABIZI)**: Use numbers for letters ('7', '3', '9', '5'). Urban Casablanca accent. Example: "sat", "tqt", "ghali chwiya", "kayn".
 - **French**: Casual "tu", natural slang ("c'est top", "grave").
 - **English**: Casual texting style ("gonna", "wanna", "tbh").
 - Keep responses short: 2-3 sentences max.
@@ -52,19 +53,20 @@ Customer just said: "${query}"
 
 Your response (persuasive, helpful, exact prices):`;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 200,
         temperature: 0.7,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: userMessage }
+        ]
       });
 
-      return response.choices[0]?.message?.content?.trim() || "Sorry, something went wrong. Please try again!";
+      const textBlock = response.content[0];
+      return (textBlock.type === 'text' ? textBlock.text : "").trim() || "Sorry, something went wrong. Please try again!";
     } catch (error) {
-      console.error('DeepSeek product inquiry error:', error);
+      console.error('Anthropic product inquiry error:', error);
       return "Sorry, something went wrong. Please try again!";
     }
   }

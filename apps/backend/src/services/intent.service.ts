@@ -1,15 +1,7 @@
-import OpenAI from "openai";
+import { anthropic, CLAUDE_MODEL } from "./rag/clients";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-// DeepSeek uses OpenAI-compatible API
-const deepseek = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || "",
-  baseURL: "https://api.deepseek.com",
-});
-
-const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat";
 
 export type MessageIntentType =
   | "recommendation"
@@ -59,20 +51,22 @@ CONVERSATION HISTORY:
 ${history || "No history."}
 `;
 
-      const response = await deepseek.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Classify this message: "${message}"` },
-        ],
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
         max_tokens: 100,
         temperature: 0.3,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: `Classify this message: "${message}"` }
+        ]
       });
 
 
-      const text = response.choices[0]?.message?.content?.trim() || "";
+      const textBlock = response.content[0];
+      const text = (textBlock.type === 'text' ? textBlock.text : "").trim();
 
       // Clean and parse JSON
+      // Claude is usually good at following "ONLY JSON" instructions but safety first
       const cleanedText = text.replace(/```json\n?|\n?```/g, "").trim();
 
       try {

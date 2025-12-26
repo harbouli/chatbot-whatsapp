@@ -34,10 +34,10 @@ mongoose.connect(MONGO_URI)
   .then(async () => {
     console.log('Connected to MongoDB');
     
-    // Auto-connect WhatsApp service on startup
+    // Auto-connect WhatsApp sessions on startup
     try {
       const whatsappService = getWhatsAppService();
-      await whatsappService.connect();
+      await whatsappService.loadSessions();
     } catch (error) {
       console.error('WhatsApp auto-connect failed:', error);
     }
