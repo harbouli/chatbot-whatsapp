@@ -292,12 +292,22 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
       // Final confirmation: Ensure we have all logic to creating the order
       await this.conversationService.confirmOrder(sessionId);
       
+      console.log('Attempting to create order...');
       const savedOrder = await this.orderService.createOrder(
         sessionId,
         pendingOrder,
         currentDiscount
       );
       
+      // Verify persistence immediately
+      const verifiedOrder = await this.orderService.getOrderById(savedOrder._id.toString());
+      if (!verifiedOrder) {
+        console.error('CRITICAL: Order was saved but could not be retrieved immediately!');
+        throw new Error('Order persistence failed');
+      } else {
+        console.log('Order verified in database:', verifiedOrder._id);
+      }
+
       await this.conversationService.clearPendingOrder(sessionId);
       
       orderStatus = { 
@@ -306,7 +316,7 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
         orderId: savedOrder._id.toString()
       };
       
-      console.log('Order saved to database (confirmation intent):', savedOrder._id);
+      console.log('Order saved to database and verified (confirmation intent):', savedOrder._id);
     } else {
       orderStatus = { pending: true, confirmed: false };
     }
@@ -377,6 +387,9 @@ Discounted Price (${currentDiscount}% off): ${discountedPrice.toLocaleString()} 
   private getMissingOrderFields(pendingOrder: IPendingOrder | null): string[] {
     const missingFields: string[] = [];
     if (!pendingOrder?.productName) missingFields.push('product selection');
+    // We should also check for productId if strictly required, but productName usually implies it.
+    // However, to be safe:
+    if (!pendingOrder?.productId && !pendingOrder?.productName) missingFields.push('product');
     if (!pendingOrder?.customerName) missingFields.push('name');
     if (!pendingOrder?.customerPhone) missingFields.push('phone');
     if (!pendingOrder?.deliveryAddress) missingFields.push('address');

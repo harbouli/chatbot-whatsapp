@@ -12,8 +12,8 @@ export class OrderService {
   ): Promise<IOrder> {
     const order = new Order({
       sessionId,
-      productId: pendingOrder.productId || '',
-      productName: pendingOrder.productName || '',
+      productId: pendingOrder.productId || 'unknown_product',
+      productName: pendingOrder.productName || 'Unknown Product',
       originalPrice: pendingOrder.price || 0,
       discountedPrice: pendingOrder.discountedPrice || pendingOrder.price || 0,
       discountPercent,
@@ -24,9 +24,17 @@ export class OrderService {
       status: 'confirmed'
     });
 
-    await order.save();
-    console.log('Order created:', order._id);
-    return order;
+    try {
+      const savedOrder = await order.save();
+      console.log(`[OrderService] Order successfully saved to "orders" collection.`);
+      console.log(`[OrderService] Order ID: ${savedOrder._id}`);
+      console.log(`[OrderService] Product: ${savedOrder.productName}`);
+      console.log(`[OrderService] Customer: ${savedOrder.customerName}`);
+      return savedOrder;
+    } catch (error) {
+      console.error('[OrderService] Failed to save order:', error);
+      throw error;
+    }
   }
 
   /**
